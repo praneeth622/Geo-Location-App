@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { Lock, Mail, User, Smartphone } from 'lucide-react-native';
 import { auth, db } from '../config/firebase';
-import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import * as Device from 'react-native-device-info';
+import { User as UserType } from '../types/index';
 
 export default function SignupScreen() {
   const [name, setName] = useState('');
@@ -17,45 +17,40 @@ export default function SignupScreen() {
 
   const getDeviceInfo = async () => {
     try {
-      // Handle web platform differently
-      if (Platform.OS === 'web') {
-        return {
-          brand: 'Web Browser',
-          modelName: navigator.userAgent,
-          osName: Platform.OS,
-          osVersion: 'N/A',
-          deviceId: 'web-' + Math.random().toString(36).substring(7),
-          imei: 'Not available on web'
-        };
+      const deviceInfo = {
+        brand: await Device.getBrand(),
+        modelName: await Device.getModel(),
+        osName: Platform.OS,
+        osVersion: await Device.getSystemVersion(),
+        deviceId: await Device.getUniqueId(),
+        imei: [] as string[]
+      };
+
+      // Try to get IMEI (only works on Android)
+      if (Platform.OS === 'android') {
+        try {
+          const imei = await Device.getImei();
+          if (imei) {
+            deviceInfo.imei.push(imei);
+          }
+        } catch (error) {
+          console.log('Error getting IMEI:', error);
+        }
       }
 
-      // Get device information with fallbacks
-      const brand = Device.brand || 'Unknown';
-      const modelName = Device.modelName || 'Unknown';
-      const osName = Device.osName || Platform.OS;
-      const osVersion = Device.osVersion || 'Unknown';
-      
-      // Create a reliable unique identifier that doesn't depend on problematic API calls
-      const uniqueId = `${Platform.OS}-${brand}-${modelName}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      
-      return {
-        brand,
-        modelName,
-        osName,
-        osVersion,
-        deviceId: uniqueId,
-        imei: uniqueId // Using our reliable ID as IMEI equivalent
-      };
+      // Add device ID as fallback
+      deviceInfo.imei.push(deviceInfo.deviceId);
+
+      return deviceInfo;
     } catch (error) {
       console.log('Error in getDeviceInfo:', error);
-      // Return fallback values if anything goes wrong
       return {
         brand: 'Unknown',
         modelName: 'Unknown',
         osName: Platform.OS,
         osVersion: 'Unknown',
         deviceId: `fallback-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        imei: `fallback-${Date.now()}-${Math.random().toString(36).substring(7)}`
+        imei: [`fallback-${Date.now()}-${Math.random().toString(36).substring(7)}`]
       };
     }
   };
@@ -91,8 +86,8 @@ export default function SignupScreen() {
       const deviceInfo = await getDeviceInfo();
 
       // Create user document with extended information
-      const userDoc = {
-        uid: userCredential.user.uid,
+      const userDoc: UserType = {
+        id: userCredential.user.uid,
         name,
         email,
         phone,
